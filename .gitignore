@@ -1,0 +1,28 @@
+# --- secrets ---
+.env
+.env.*
+!.env.example
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- environments (never commit these) ---
+.venv/
+venv/
+env/
+
+# --- local tooling ---
+.claude/
+.vscode/
+.idea/
+
+# --- generated artifacts ---
+runs/
+out/
+tests/fixtures/generated/
+*.jsonl

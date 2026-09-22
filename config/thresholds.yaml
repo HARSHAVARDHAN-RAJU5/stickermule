@@ -1,0 +1,36 @@
+# Pre-flight thresholds.
+#
+# These live in config, not in code, on purpose: tightening the agent after a
+# bad week must not need a deploy. Values are researched defaults for cut vinyl
+# and would be tuned against a real press and its remake data.
+
+checks:
+  RES_DPI:
+    fail_below: 150        # dpi — visibly soft at any size
+    warn_below: 300        # dpi — acceptable but not ideal
+    target: 300            # dpi — what we ask the customer for
+
+  ALPHA_MISSING:
+    # Die-cut ordered, file has no transparency at all.
+    min_alpha_coverage_pct: 1.0   # below this, there is effectively no alpha
+
+  ALPHA_FAKE:
+    # Alpha channel present, but what sits behind the design is still a solid
+    # light rectangle drawn into the art. The most common die-cut mistake.
+    box_fill_ratio_max: 0.97      # content filling this much of its bbox is a box
+    corner_delta_e_max: 5.0       # CIE76 between the 4 bbox corner patches
+    corner_patch_px: 12
+    near_white_min_l: 92.0        # CIE L* — a "white" background
+
+  SAFE_ZONE:
+    fail_below_in: 0.0625  # 1/16" — will be cut into
+    warn_below_in: 0.125   # 1/8"  — uncomfortably close
+    corner_radius_in: 0.125  # for rounded_rect products
+
+decide:
+  # The single lever an operations lead owns. A WARN whose code is in this
+  # list may still auto-approve; anything else goes to a human.
+  auto_approvable_warns:
+    - ALPHA_HALO
+    - CUT_RADIUS
+    - INK_LIMIT
