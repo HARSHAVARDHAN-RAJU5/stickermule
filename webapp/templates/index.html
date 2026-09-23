@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pre-flight</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23152338'/%3E%3Crect x='4' y='4' width='8' height='8' rx='1' fill='none' stroke='%23fff' stroke-dasharray='2 1.5'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">
+    <h1>Pre-flight</h1>
+    <p>Artwork check</p>
+  </div>
+  <nav>
+    <button class="nav-item is-active" data-view="check">
+      <span class="ico" aria-hidden="true">&#9633;</span> Check artwork
+    </button>
+    <button class="nav-item" data-view="samples">
+      <span class="ico" aria-hidden="true">&#9636;</span> Sample files
+    </button>
+    <button class="nav-item" data-view="results">
+      <span class="ico" aria-hidden="true">&#9632;</span> Test results
+    </button>
+    <button class="nav-item" data-view="how">
+      <span class="ico" aria-hidden="true">&#9675;</span> How it works
+    </button>
+  </nav>
+  <p class="foot">Deterministic checks decide.<br>No model changes a verdict.</p>
+</aside>
+
+<main>
+
+  <!-- ============ CHECK ============ -->
+  <section class="view is-active" id="view-check">
+    <header class="page-head">
+      <h2>Check artwork</h2>
+      <button class="btn-ghost" id="reset">Clear</button>
+    </header>
+
+    <div class="stats" id="stats">
+      <div class="card stat"><span class="label">Files checked</span><b id="s-total">0</b><span class="cap">this session</span></div>
+      <div class="card stat"><span class="label">Approved</span><b id="s-ok" class="v-ok">0</b><span class="cap">ready to print</span></div>
+      <div class="card stat"><span class="label">Back to customer</span><b id="s-fix" class="v-fix">0</b><span class="cap">needs a new file</span></div>
+      <div class="card stat"><span class="label">Human review</span><b id="s-rev" class="v-rev">0</b><span class="cap">agent unsure</span></div>
+    </div>
+
+    <div class="split">
+      <div class="card pad">
+        <h3>Upload</h3>
+        <form id="form">
+          <label class="drop" id="drop">
+            <input type="file" id="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/tiff" hidden>
+            <span id="drop-text">Drop a design here, or click to choose</span>
+          </label>
+
+          <div class="field-row">
+            <div class="field">
+              <label for="w">Width (in)</label>
+              <input type="number" id="w" value="3" min="0.25" max="60" step="0.25">
+            </div>
+            <div class="field">
+              <label for="h">Height (in)</label>
+              <input type="number" id="h" value="3" min="0.25" max="60" step="0.25">
+            </div>
+          </div>
+          <div class="field-row">
+            <div class="field">
+              <label for="shape">Shape</label>
+              <select id="shape">
+                <option value="die_cut">Die cut</option>
+                <option value="square">Square</option>
+                <option value="rect">Rectangle</option>
+                <option value="circle">Circle</option>
+                <option value="rounded_rect">Rounded rectangle</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="material">Material</label>
+              <select id="material">
+                <option value="white_vinyl">White vinyl</option>
+                <option value="clear">Clear</option>
+                <option value="holographic">Holographic</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="btn" id="go" type="submit" disabled>Check artwork</button>
+          <p class="hint" id="hint">PNG, JPEG, WebP, BMP or TIFF. PDF and SVG are not supported yet.</p>
+        </form>
+      </div>
+
+      <div class="card pad" id="result-card">
+        <h3>Result</h3>
+        <div class="empty" id="empty">
+          <p>Nothing checked yet.</p>
+          <p class="cap">Upload a design, or try one of the <button class="link" data-view="samples">sample files</button>.</p>
+        </div>
+        <div id="result" hidden></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SAMPLES ============ -->
+  <section class="view" id="view-samples">
+    <header class="page-head">
+      <h2>Sample files</h2>
+      <span class="cap" id="sample-count"></span>
+    </header>
+    <p class="intro">Every file the agent is scored against. Each one has a known
+      right answer, written down before the agent ran. Click any row to check it.</p>
+    <div class="card">
+      <table class="tbl">
+        <thead>
+          <tr><th>File</th><th>Ordered as</th><th>Should be</th><th>What it is</th><th></th></tr>
+        </thead>
+        <tbody id="sample-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section class="view" id="view-results">
+    <header class="page-head"><h2>Test results</h2></header>
+    <p class="intro">Generated by <code>python -m evalkit run</code>. The caveats are
+      produced with the numbers, so they cannot drift apart.</p>
+    <div class="card pad md" id="results-body"><p class="cap">Loading…</p></div>
+  </section>
+
+  <!-- ============ HOW ============ -->
+  <section class="view" id="view-how">
+    <header class="page-head"><h2>How it works</h2></header>
+    <div class="card pad md how">
+      <p>A customer uploads a picture and orders a sticker at a size. The agent
+      answers one question: <b>will this print badly?</b></p>
+
+      <ol class="steps">
+        <li><b>Open the file.</b> Check it really is an image, by its contents
+          rather than its name. Turn it into a grid of pixels.</li>
+        <li><b>Measure.</b> How many pixels across? Where does the design sit?
+          Is the background see-through or solid? How much fine detail is there,
+          and where? Measurements only, no opinions.</li>
+        <li><b>Compare each measurement to a rule.</b> 288 pixels across a
+          3&nbsp;inch sticker is 96 dots per inch. Printing wants 300. That
+          fails. Every rule is a small, separate piece of code, and the numbers
+          it compares against live in one settings file.</li>
+        <li><b>Decide where the job goes.</b> Anything failed, tell the
+          customer. Something the agent cannot judge, send it to a person.
+          Otherwise approve.</li>
+      </ol>
+
+      <h4>The six rules it currently applies</h4>
+      <dl class="rules">
+        <dt>Resolution</dt>
+        <dd>Pixels divided by the ordered inches. Under 150 always fails.
+          Between 150 and 300 the artwork decides: small lettering fails,
+          a single large shape passes.</dd>
+        <dt>Missing transparency</dt>
+        <dd>A die-cut sticker needs a see-through background. A fully solid
+          file cannot be cut to shape.</dd>
+        <dt>Fake transparency</dt>
+        <dd>The file has a see-through edge, but a white box is still sitting
+          behind the design. It will print as a box.</dd>
+        <dt>Safe zone</dt>
+        <dd>How close the design comes to the cut line, when the background can
+          be separated from it.</dd>
+        <dt>Picture of a sticker</dt>
+        <dd>The file is a screenshot of a finished sticker rather than the
+          artwork for one: a white die-cut rim and a drop shadow already drawn
+          in. Printed as-is, the customer gets a fake rim and a photograph of a
+          shadow. A person decides, because a designer may have drawn a white
+          outline on purpose.</dd>
+        <dt>Detail at the cut</dt>
+        <dd>Whether fine detail such as lettering runs off the edge. Flat colour
+          running off the edge is deliberate and allowed; lettering is not. This
+          one needs no background, so it works on full-bleed designs. On a
+          photograph running to all four edges there is no background to find,
+          so the agent treats the file as continuous-tone imagery and lets it
+          through — full bleed is the point of it.</dd>
+      </dl>
+
+      <h4>What it will not do</h4>
+      <p>No language model can change a verdict, add a finding, or approve a
+      file. A model is only ever used to word the message to the customer, and
+      any number it writes that is not in the findings is thrown away.</p>
+      <p>It will not offer to sharpen a blurry file either. Enlarging pixels
+      cannot invent detail that was never there, and doing it would look
+      helpful while sending a soft print to press.</p>
+    </div>
+  </section>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
