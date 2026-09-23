@@ -48,7 +48,7 @@ class TestGuards:
             normalize(tmp_path / "nope.png")
 
     def test_truncated_png(self, tmp_path):
-        path = save(blank(64, WHITE), tmp_path / "art.png")
+        path = save(blank(64, fill=WHITE), tmp_path / "art.png")
         data = path.read_bytes()
         path.write_bytes(data[: len(data) // 2])
 
@@ -63,7 +63,7 @@ def test_exif_orientation_is_applied_before_measurement(tmp_path):
     the stored pixels are rotated 90 degrees clockwise, so a decoder that
     ignores EXIF finds it at the bottom-left instead.
     """
-    art = blank(200, WHITE)
+    art = blank(200, fill=WHITE)
     rect(art, 0, 0, 39, 19, INK)  # a wide mark, top-left of the upright image
     upright = Image.fromarray(art, mode="RGBA")
 
@@ -85,7 +85,7 @@ def test_exif_orientation_is_applied_before_measurement(tmp_path):
 
 
 def test_canvas_is_always_rgba_uint8(tmp_path):
-    path = save(blank(32, WHITE), tmp_path / "art.png")
+    path = save(blank(32, fill=WHITE), tmp_path / "art.png")
 
     canvas = normalize(path)
 

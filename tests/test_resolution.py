@@ -19,8 +19,8 @@ def art(size_px: int):
     [
         (900, Severity.PASS, 300.0),  # exactly at target
         (1200, Severity.PASS, 400.0),
-        (600, Severity.WARN, 200.0),  # printable, not crisp
-        (899, Severity.WARN, 299.7),  # one pixel under the bar
+        (600, Severity.PASS, 200.0),  # below target, but a smooth shape
+        (899, Severity.PASS, 299.7),  # one pixel under the bar
         (288, Severity.FAIL, 96.0),  # the classic web-logo upload
         (300, Severity.FAIL, 100.0),
     ],
@@ -34,6 +34,24 @@ def test_severity_follows_effective_dpi(
     assert finding.severity is expected
     assert finding.measured == pytest.approx(expected_dpi, abs=0.1)
     assert finding.unit == "dpi"
+
+
+def test_the_middle_band_is_decided_by_the_artwork(make_features, config):
+    """Between 150 and 300 dpi, what is in the picture decides.
+
+    Both files are 200 dpi. One is a single large shape and prints fine. The
+    other is covered in small lettering and does not. Sending both to a person
+    was the old behaviour and it wasted the person's time on the first one.
+    """
+    from evalkit.art import blank, text_block
+
+    product = ProductSpec(3.0, 3.0, Shape.DIE_CUT)
+    smooth = res_dpi(make_features(art(600), product), config)
+    lettered = res_dpi(make_features(text_block(blank(600), 60, 60, 540, 540), product), config)
+
+    assert smooth.measured == lettered.measured == pytest.approx(200.0)
+    assert smooth.severity is Severity.PASS
+    assert lettered.severity is Severity.FAIL
 
 
 def test_the_smaller_axis_decides(make_features, config):

@@ -67,22 +67,29 @@ def alpha_fake(features: Features, config: Config) -> Finding | None:
 
     cfg = config.for_check("ALPHA_FAKE")
     fill_max = float(cfg["box_fill_ratio_max"])
-    delta_e_max = float(cfg["corner_delta_e_max"])
     near_white_min_l = float(cfg["near_white_min_l"])
-    patch_px = int(cfg["corner_patch_px"])
+    max_chroma = float(cfg["max_chroma"])
+    max_l_spread = float(cfg["max_l_spread"])
+    band_px = int(cfg["band_px"])
 
     fill_ratio = features.content_fill_ratio or 0.0
-    corners = _bbox_corner_patches(features, patch_px)
-    delta_e = _max_pairwise_delta_e(corners)
-    mean_l = float(corners[:, 0].mean())
+    band = _perimeter_band(features, band_px)
+    median_l = float(np.median(band[:, 0]))
+    l_spread = float(np.subtract(*np.percentile(band[:, 0], [75, 25])))
+    median_chroma = float(np.median(np.linalg.norm(band[:, 1:], axis=1)))
 
+    # A background is large, light, grey and smooth. All four, or it is a design.
     looks_like_a_box = (
-        fill_ratio >= fill_max and delta_e <= delta_e_max and mean_l >= near_white_min_l
+        fill_ratio >= fill_max
+        and median_l >= near_white_min_l
+        and median_chroma <= max_chroma
+        and l_spread <= max_l_spread
     )
 
     detail = {
-        "corner_delta_e": round(delta_e, 2),
-        "corner_mean_l": round(mean_l, 1),
+        "band_median_l": round(median_l, 1),
+        "band_median_chroma": round(median_chroma, 1),
+        "band_l_spread": round(l_spread, 1),
         "content_source": features.content_source,
     }
 
@@ -112,31 +119,28 @@ def alpha_fake(features: Features, config: Config) -> Finding | None:
     )
 
 
-def _bbox_corner_patches(features: Features, patch_px: int) -> np.ndarray:
-    """Mean L*a*b* of the four corners of the *content* bounding box.
+def _perimeter_band(features: Features, band_px: int) -> np.ndarray:
+    """L*a*b* of the opaque pixels in a band around the content bounding box.
 
-    Sampling the canvas corners would only measure the transparent margin,
-    which tells us nothing about what sits behind the design.
+    Sampling the canvas corners would only measure the transparent margin.
+    Sampling four corner patches of the bounding box cannot tell a flat white
+    box from a soft gradient, because the two corners differ. The band is the
+    whole edge of whatever sits behind the design, which is the thing being
+    judged.
     """
     bbox = features.content_bbox
     assert bbox is not None  # guarded by the caller
     x0, y0, x1, y1 = bbox
     region = features.lab[y0 : y1 + 1, x0 : x1 + 1]
+    content = features.content_mask[y0 : y1 + 1, x0 : x1 + 1]
     h, w = region.shape[:2]
-    p = max(1, min(patch_px, h // 2, w // 2))
-    quadrants = (
-        region[:p, :p],
-        region[:p, w - p :],
-        region[h - p :, :p],
-        region[h - p :, w - p :],
-    )
-    return np.stack([q.reshape(-1, 3).mean(axis=0) for q in quadrants])
 
+    b = max(1, min(band_px, h // 2, w // 2))
+    edge = np.zeros((h, w), dtype=bool)
+    edge[:b, :] = edge[-b:, :] = True
+    edge[:, :b] = edge[:, -b:] = True
 
-def _max_pairwise_delta_e(patches: np.ndarray) -> float:
-    """Largest CIE76 colour difference between any two patches."""
-    worst = 0.0
-    for i in range(len(patches)):
-        for j in range(i + 1, len(patches)):
-            worst = max(worst, float(np.linalg.norm(patches[i] - patches[j])))
-    return worst
+    band = region[edge & content]
+    # A silhouette can leave the band empty; fall back to the whole region
+    # rather than reporting on nothing.
+    return band if band.size else region.reshape(-1, 3)

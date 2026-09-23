@@ -22,6 +22,13 @@ def safe_zone(features: Features, config: Config) -> Finding | None:
         return None
 
     cfg = config.for_check("SAFE_ZONE")
+    if features.background_coherence < float(cfg["min_background_coherence"]):
+        # The background came back as scattered speckle rather than one
+        # region, which is what a photograph running to the edges produces.
+        # The clearance would be measured against noise, so there is nothing
+        # honest to report. DETAIL_AT_CUT covers these files instead.
+        return None
+
     fail_below = float(cfg["fail_below_in"])
     warn_below = float(cfg["warn_below_in"])
 

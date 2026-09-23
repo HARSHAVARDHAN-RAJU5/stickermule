@@ -59,4 +59,4 @@ def _iter_findings(features: Features, config: Config) -> Iterator[Finding]:
 
 # Importing the modules is what populates the registry. Kept at the bottom so
 # the decorator exists before they load.
-from . import resolution, safezone, transparency  # noqa: E402,F401
+from . import detail, mockup, resolution, safezone, transparency  # noqa: E402,F401

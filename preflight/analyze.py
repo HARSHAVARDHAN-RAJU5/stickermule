@@ -19,6 +19,7 @@ ALPHA_CONTENT_THRESHOLD = 8  # alpha above this counts as content
 ALPHA_OPAQUE_THRESHOLD = 250  # alpha below this counts as "not fully opaque"
 FLOOD_TOLERANCE = 12  # per-channel, for background flood fill
 DIE_CUT_OFFSET_IN = 0.08  # the border a die-cut contour is offset outward by
+DETAIL_WINDOW_IN = 0.05  # window the fine-detail density is measured over
 
 
 @dataclass
@@ -130,6 +131,116 @@ class Features:
             self.lab[h - p :, w - p :],
         )
         return np.stack([r.reshape(-1, 3).mean(axis=0) for r in regions])
+
+    # --- fine detail ---------------------------------------------------
+    #
+    # "Fine detail" means text, small lettering, thin logo strokes — the things
+    # that look wrong when they are printed blurry or clipped. A single hard
+    # boundary between two flat colours is not fine detail, even though it is
+    # an edge, so what is measured is the *density* of edges in a small window
+    # rather than the edges themselves.
+
+    @cached_property
+    def gray_on_white(self) -> np.ndarray:
+        """Greyscale of what the art looks like printed on white stock."""
+        alpha = (self.canvas.alpha.astype(np.float32) / 255.0)[:, :, None]
+        over_white = self.canvas.rgb.astype(np.float32) * alpha + 255.0 * (1.0 - alpha)
+        return cv2.cvtColor(over_white.astype(np.uint8), cv2.COLOR_RGB2GRAY)
+
+    @cached_property
+    def edges(self) -> np.ndarray:
+        return cv2.Canny(self.gray_on_white, 60, 160) > 0
+
+    @cached_property
+    def detail_density(self) -> np.ndarray:
+        """Per-pixel fraction of a small window that is edge.
+
+        A block of text scores high. A flat colour running off the edge scores
+        zero. The boundary between two flat colours scores low, because one
+        line contributes few edge pixels to the window around it.
+        """
+        window = max(3, int(round(self.px(DETAIL_WINDOW_IN))) | 1)
+        return cv2.boxFilter(
+            self.edges.astype(np.float32), -1, (window, window), normalize=True
+        )
+
+    @cached_property
+    def detail_score(self) -> float:
+        """How much fine detail the busiest part of the artwork carries."""
+        return float(np.percentile(self.detail_density, 99.5))
+
+    # --- can the background be trusted? ---------------------------------
+    #
+    # Flood filling inward from the corners always returns *something*. On a
+    # photograph that runs to the edges it returns scattered speckle, and a
+    # clearance measured against speckle is meaningless while looking exactly
+    # like a real one. A background worth measuring against is a single
+    # connected region.
+
+    @cached_property
+    def background_coherence(self) -> float:
+        """Share of the background that sits in its largest connected piece.
+
+        1.0 means one clean region. Measured values: every ordinary design
+        scores 1.00; a full-bleed photograph scores 0.66.
+        """
+        background = (~self.content_mask).astype(np.uint8)
+        if not background.any():
+            return 0.0
+        count, _, stats, _ = cv2.connectedComponentsWithStats(background, connectivity=8)
+        if count <= 1:
+            return 0.0
+        areas = stats[1:, cv2.CC_STAT_AREA]
+        return float(areas.max()) / float(background.sum())
+
+    @cached_property
+    def content_touches_border(self) -> float:
+        """Share of the outermost ring of pixels that is content."""
+        mask = self.content_mask
+        ring = np.zeros_like(mask)
+        ring[:2, :] = ring[-2:, :] = True
+        ring[:, :2] = ring[:, -2:] = True
+        return float(mask[ring].mean())
+
+    # --- signs of a finished sticker, rather than artwork ---------------
+
+    def _ring(self, outer: int, inner: int = 0) -> np.ndarray:
+        src = self.content_mask.astype(np.uint8) * 255
+        kernel = lambda n: cv2.getStructuringElement(  # noqa: E731
+            cv2.MORPH_ELLIPSE, (2 * n + 1, 2 * n + 1)
+        )
+        grown = cv2.dilate(src, kernel(outer)) > 0
+        held = cv2.dilate(src, kernel(inner)) > 0 if inner else self.content_mask
+        return grown & ~held
+
+    @cached_property
+    def shadow_halo(self) -> float:
+        """How much darker the backdrop is just outside the design.
+
+        A drop shadow is the tell-tale of a rendered mockup: artwork ready to
+        print has no shadow, because the shadow is what the finished sticker
+        casts.
+        """
+        near = self._ring(6)
+        far = self._ring(22, 14)
+        if not near.any() or not far.any():
+            return 0.0
+        grey = self.gray_on_white.astype(np.float32)
+        return float(grey[far].mean()) - float(grey[near].mean())
+
+    @cached_property
+    def content_rim_lightness(self) -> float:
+        """Mean lightness of the design's own outer edge band.
+
+        A die-cut sticker is manufactured with a white rim. A file that
+        already has one drawn into it is a picture of the finished article.
+        """
+        src = self.content_mask.astype(np.uint8) * 255
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+        inner = self.content_mask & ~(cv2.erode(src, kernel) > 0)
+        if not inner.any():
+            return 0.0
+        return float(self.gray_on_white[inner].mean())
 
     # --- geometry ------------------------------------------------------
 

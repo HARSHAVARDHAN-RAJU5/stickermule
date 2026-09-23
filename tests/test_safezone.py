@@ -85,3 +85,18 @@ def test_skipped_for_die_cut(make_features, config):
     features = make_features(inset_content(600, 5), DIE_CUT)
 
     assert safe_zone(features, config) is None
+
+
+def test_declines_on_a_photograph_rather_than_measuring_noise(make_features, config):
+    """A clearance measured against speckle looks exactly like a real one.
+
+    Flood filling a photograph that runs to the edges returns scattered noise
+    rather than a background. Reporting 0.002 in from that is worse than
+    reporting nothing, so the check declines and DETAIL_AT_CUT covers the file.
+    """
+    from evalkit.art import photo_texture
+
+    features = make_features(photo_texture(900), ProductSpec(3.0, 3.0, Shape.SQUARE))
+
+    assert features.background_coherence < 0.95
+    assert safe_zone(features, config) is None

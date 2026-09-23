@@ -55,6 +55,20 @@ class TestAlphaFake:
     def test_skipped_for_fixed_shapes(self, make_features, config):
         assert alpha_fake(make_features(white_box_with_alpha(), SQUARE), config) is None
 
+    def test_a_gradient_background_is_still_a_box(self, make_features, config):
+        """The case that four corner samples missed.
+
+        A background ramping from 255 to 225 is not uniform corner to corner,
+        so pairwise colour difference cleared it. It is still a white box, and
+        it still prints as one. The check now measures the median lightness,
+        chroma and spread of the whole perimeter band instead.
+        """
+        from evalkit.art import blank, disc, horizontal_gradient
+
+        art = disc(horizontal_gradient(blank(900), 255, 225, (40, 40, 859, 859)), 0.25)
+
+        assert alpha_fake(make_features(art, DIE_CUT), config).severity is Severity.FAIL
+
     def test_a_dark_opaque_block_is_not_flagged_as_a_white_box(
         self, make_features, config
     ):

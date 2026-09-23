@@ -7,8 +7,12 @@
 checks:
   RES_DPI:
     fail_below: 150        # dpi — visibly soft at any size
-    warn_below: 300        # dpi — acceptable but not ideal
+    warn_below: 300        # dpi — below target
     target: 300            # dpi — what we ask the customer for
+    # Between fail_below and warn_below the artwork decides rather than a
+    # blanket warning: above this much fine detail, a soft file fails.
+    # Measured values: flat colour 0.00, a large disc 0.09, small text 0.18.
+    detail_score_max: 0.12
 
   ALPHA_MISSING:
     # Die-cut ordered, file has no transparency at all.
@@ -17,15 +21,48 @@ checks:
   ALPHA_FAKE:
     # Alpha channel present, but what sits behind the design is still a solid
     # light rectangle drawn into the art. The most common die-cut mistake.
+    #
+    # Measured on the perimeter band of the content's bounding box rather than
+    # on four corner samples: a background is a large, smooth, low-chroma,
+    # light region, and four corners cannot tell a flat white box from a soft
+    # gradient. See docs/results.md for the case that forced this.
     box_fill_ratio_max: 0.97      # content filling this much of its bbox is a box
-    corner_delta_e_max: 5.0       # CIE76 between the 4 bbox corner patches
-    corner_patch_px: 12
-    near_white_min_l: 92.0        # CIE L* — a "white" background
+    band_px: 12                   # width of the perimeter band sampled
+    near_white_min_l: 92.0        # median CIE L* of the band
+    max_chroma: 8.0               # median sqrt(a*^2 + b*^2); a background is grey
+    max_l_spread: 20.0            # L* interquartile range; tolerates a gradient
+
+  DETAIL_AT_CUT:
+    # Is anything that matters about to be cut off? Needs no background
+    # separation, so it works on full-bleed files the safe-zone check cannot
+    # measure. Density, not edges: a hard boundary between two flat colours
+    # scores 0.067 and is ignored; small lettering scores 0.178.
+    fail_below_in: 0.0625
+    warn_below_in: 0.125
+    min_density: 0.10
+    # Below this, the background came back as scattered speckle rather than
+    # one region, which means the file is continuous-tone imagery covering
+    # the whole sticker. Measured: every ordinary design 1.00, a full-bleed
+    # photograph 0.66.
+    min_background_coherence: 0.95
 
   SAFE_ZONE:
     fail_below_in: 0.0625  # 1/16" — will be cut into
     warn_below_in: 0.125   # 1/8"  — uncomfortably close
     corner_radius_in: 0.125  # for rounded_rect products
+    # Same gate as DETAIL_AT_CUT: without one coherent background region the
+    # clearance would be measured against noise, so the check declines.
+    min_background_coherence: 0.95
+
+  STICKER_MOCKUP:
+    # A picture of a finished sticker rather than the artwork to print.
+    # Measured lightness of the design's own outer rim: ordinary designs 27 to
+    # 186, rendered mockups 253 to 255. Shadow halo: ordinary designs -2.3 to
+    # 1.1, rendered mockups 3.5 to 8.6.
+    min_rim_lightness: 235.0
+    min_shadow_halo: 2.0
+    min_background_coherence: 0.95
+    max_content_on_border: 0.05
 
 decide:
   # The single lever an operations lead owns. A WARN whose code is in this

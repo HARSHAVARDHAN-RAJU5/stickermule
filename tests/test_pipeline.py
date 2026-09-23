@@ -36,7 +36,7 @@ def test_low_resolution_and_a_tight_edge_both_reported(tmp_path, config):
     result = run(path, ProductSpec(2.0, 2.0, Shape.SQUARE), config=config)
 
     codes = {f.code for f in result.findings if f.is_fail}
-    assert codes == {"RES_DPI", "SAFE_ZONE"}
+    assert codes == {"RES_DPI", "SAFE_ZONE", "DETAIL_AT_CUT"}
     assert result.state is State.NEEDS_CUSTOMER_FIX
 
 

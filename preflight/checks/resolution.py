@@ -17,6 +17,8 @@ def res_dpi(features: Features, config: Config) -> Finding:
     warn_below = float(cfg["warn_below"])
     target = float(cfg["target"])
 
+    detail_max = float(cfg["detail_score_max"])
+
     dpi = features.dpi
     product = features.product
 
@@ -28,8 +30,22 @@ def res_dpi(features: Features, config: Config) -> Finding:
         severity, threshold = Severity.FAIL, fail_below
         summary = f"{dpi:.0f} DPI at the ordered size; will print visibly soft"
     elif dpi < warn_below:
-        severity, threshold = Severity.WARN, warn_below
-        summary = f"{dpi:.0f} DPI at the ordered size; printable but not crisp"
+        # The middle band used to be a blanket warning, which sent every
+        # borderline file to a person. What actually decides it is what the
+        # picture contains: 200 DPI on a photograph prints fine, 200 DPI on
+        # small lettering does not. So the artwork decides, not a coin flip.
+        if features.detail_score > detail_max:
+            severity, threshold = Severity.FAIL, warn_below
+            summary = (
+                f"{dpi:.0f} DPI at the ordered size, and the artwork contains fine "
+                f"detail such as lettering, which will print soft"
+            )
+        else:
+            severity, threshold = Severity.PASS, warn_below
+            summary = (
+                f"{dpi:.0f} DPI at the ordered size; below target, but the artwork "
+                f"has no fine detail that would show it"
+            )
     else:
         severity, threshold = Severity.PASS, warn_below
         summary = f"{dpi:.0f} DPI at the ordered size"
@@ -49,5 +65,6 @@ def res_dpi(features: Features, config: Config) -> Finding:
             # Recorded for the report, never used for the verdict.
             "metadata_dpi": features.canvas.metadata_dpi,
             "required_px": [need_w, need_h],
+            "detail_score": round(features.detail_score, 3),
         },
     )
