@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .config import load_config
 from .eventlog import EventLog
+from .explain import get_writer
 from .pipeline import run
 from .types import Material, ProductSpec, Severity, Shape
 
@@ -43,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, default=None)
     parser.add_argument("--log", type=Path, default=None, help="JSONL event log path")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
+    parser.add_argument(
+        "--message",
+        choices=["template", "gemini", "ollama"],
+        default=None,
+        help="also write the customer message, when the file goes back to them",
+    )
     return parser
 
 
@@ -56,6 +63,8 @@ def main(argv: list[str] | None = None) -> int:
         product,
         config=load_config(args.config),
         log=EventLog(args.log) if args.log else None,
+        draft=args.message is not None,
+        writer=get_writer(args.message) if args.message else None,
     )
 
     if args.json:
@@ -68,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
                     "dpi": result.dpi,
                     "elapsed_ms": result.elapsed_ms,
                     "findings": [f.to_dict() for f in result.findings],
+                    "message": result.message.to_dict() if result.message else None,
                 },
                 indent=2,
             )
@@ -77,6 +87,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {result.reason}")
         for finding in result.findings:
             print(f"  [{MARK[finding.severity]:>4}] {finding.code:<14} {finding.summary}")
+        if result.message:
+            m = result.message
+            refused = sum(1 for a in m.attempts if not a.passed)
+            print(f"\n  message ({m.source}, {m.writer}, {refused} refused draft(s)):")
+            for line in m.text.splitlines():
+                print(f"    {line}")
 
     # Exit code carries the route, so the CLI composes in a shell pipeline.
     return 0 if result.approved else 1

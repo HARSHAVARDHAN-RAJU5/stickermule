@@ -15,6 +15,8 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 
 from evalkit.dataset import CASES, build
 from preflight.config import load_config
+from preflight.explain import get_writer
+from preflight.explain.writers import env
 from preflight.pipeline import run
 from preflight.types import Material, ProductSpec, Shape, State
 
@@ -44,6 +46,13 @@ class Tally:
 
 
 TALLY = Tally()
+
+WRITER_NAMES = ("template", "gemini", "ollama")
+
+
+def _writer(name: str | None):
+    """The writer the page asked for. Unknown names get the template."""
+    return get_writer(name if name in WRITER_NAMES else "template")
 
 
 def _product(form) -> ProductSpec:
@@ -88,6 +97,7 @@ def _payload(result, product: ProductSpec) -> dict:
             }
             for f in result.findings
         ],
+        "message": result.message.to_dict() if result.message else None,
     }
 
 
@@ -119,6 +129,29 @@ def versioned_static(version: int, filename: str):
     return send_from_directory(Path(app.root_path) / "static", filename)
 
 
+@app.get("/api/writers")
+def writers():
+    """Which message writers can be used right now. Checked, not assumed."""
+    import urllib.request
+
+    ollama = get_writer("ollama")
+    try:
+        with urllib.request.urlopen(f"{ollama.host}/api/tags", timeout=1):
+            ollama_ok = True
+    except OSError:
+        ollama_ok = False
+    return jsonify(
+        {
+            "template": {"ok": True, "label": "No model (fixed wording)"},
+            "gemini": {
+                "ok": bool(env("GEMINI_API_KEY")),
+                "label": f"Gemini ({get_writer('gemini').model})",
+            },
+            "ollama": {"ok": ollama_ok, "label": f"Ollama ({ollama.model}, local)"},
+        }
+    )
+
+
 @app.get("/api/tally")
 def tally():
     return jsonify(asdict(TALLY))
@@ -135,7 +168,9 @@ def check():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / f"upload{suffix}"
         upload.save(path)
-        result = run(path, product, config=CONFIG)
+        result = run(
+            path, product, config=CONFIG, draft=True, writer=_writer(request.form.get("writer"))
+        )
 
     TALLY.record(result.state)
     payload = _payload(result, product)
@@ -170,7 +205,8 @@ def samples():
 
 @app.post("/api/check-sample")
 def check_sample():
-    name = (request.json or {}).get("name", "")
+    body = request.json or {}
+    name = body.get("name", "")
     case = next((c for c in CASES if c.name == name), None)
     if case is None:
         return jsonify({"error": f"No sample named {name!r}."}), 404
@@ -178,7 +214,13 @@ def check_sample():
     if not (EVALSET / case.filename).exists():
         build(EVALSET)
 
-    result = run(EVALSET / case.filename, case.product, config=CONFIG)
+    result = run(
+        EVALSET / case.filename,
+        case.product,
+        config=CONFIG,
+        draft=True,
+        writer=_writer(body.get("writer")),
+    )
     TALLY.record(result.state)
 
     payload = _payload(result, case.product)

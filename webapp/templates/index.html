@@ -28,7 +28,7 @@
       <span class="ico" aria-hidden="true">&#9675;</span> How it works
     </button>
   </nav>
-  <p class="foot">Deterministic checks decide.<br>No model changes a verdict.</p>
+  <p class="foot">Deterministic checks decide.<br>A model only words the message.</p>
 </aside>
 
 <main>
@@ -85,6 +85,15 @@
                 <option value="holographic">Holographic</option>
               </select>
             </div>
+          </div>
+
+          <div class="field">
+            <label for="writer">Customer message written by</label>
+            <select id="writer">
+              <option value="template">No model (fixed wording)</option>
+              <option value="gemini">Gemini</option>
+              <option value="ollama">Ollama (local)</option>
+            </select>
           </div>
 
           <button class="btn" id="go" type="submit" disabled>Check artwork</button>
@@ -181,10 +190,25 @@
           through — full bleed is the point of it.</dd>
       </dl>
 
+      <h4>Writing to the customer</h4>
+      <p>When a file goes back to the customer, a language model words the
+      message. It never sees the picture, only short sentences the checks
+      wrote, with the numbers already in them. Then a plain piece of code, the
+      <b>guard</b>, reads the message and refuses it if it:</p>
+      <ul>
+        <li>writes a number the checks did not measure,</li>
+        <li>leaves out a problem that was found,</li>
+        <li>brings up a problem that was not found,</li>
+        <li>promises anything, like a refund or an approval.</li>
+      </ul>
+      <p>A refused message goes back to the model once, with the reasons. If the
+      second one is refused too, or the model cannot be reached, the customer
+      gets a fixed, pre-written message instead. Either way they only hear what
+      the checks found.</p>
+
       <h4>What it will not do</h4>
       <p>No language model can change a verdict, add a finding, or approve a
-      file. A model is only ever used to word the message to the customer, and
-      any number it writes that is not in the findings is thrown away.</p>
+      file. The route is decided before the model is asked anything.</p>
       <p>It will not offer to sharpen a blurry file either. Enlarging pixels
       cannot invent detail that was never there, and doing it would look
       helpful while sending a soft print to press.</p>

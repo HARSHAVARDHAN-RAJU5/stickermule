@@ -31,3 +31,6 @@ out/
 # labels.yaml is the ground truth and is committed.
 evalset/*.png
 !evalset/labels.yaml
+
+# --- screenshots for posts, not part of the project ---
+press/

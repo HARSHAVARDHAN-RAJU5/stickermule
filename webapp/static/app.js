@@ -67,6 +67,7 @@ $("#form").addEventListener("submit", async e => {
   body.append("height_in", $("#h").value);
   body.append("shape", $("#shape").value);
   body.append("material", $("#material").value);
+  body.append("writer", $("#writer").value);
 
   await submit("/api/check", { method: "POST", body },
                URL.createObjectURL(file.files[0]));
@@ -83,7 +84,7 @@ $("#reset").addEventListener("click", () => {
 async function submit(url, options, imageUrl) {
   go.disabled = true;
   const prev = go.textContent;
-  go.textContent = "Checking…";
+  go.textContent = $("#writer").value === "template" ? "Checking…" : "Checking and writing…";
   try {
     const res = await fetch(url, options);
     const data = await res.json();
@@ -102,7 +103,7 @@ async function runSample(name) {
   show("check");
   await submit("/api/check-sample",
     { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }) },
+      body: JSON.stringify({ name, writer: $("#writer").value }) },
     `/api/sample-image/${name}`);
 }
 
@@ -127,6 +128,8 @@ function render(data, imageUrl) {
   if (data.findings.length) {
     bits.push(`<div class="findings">${data.findings.map(finding).join("")}</div>`);
   }
+
+  if (data.message) bits.push(message(data.message));
 
   if (data.expected_route) {
     const ok = data.expected_route === data.route;
@@ -181,6 +184,40 @@ function finding(f) {
       <span><span class="name">${label(f.code)}</span><br>
         <span class="txt">${escapeHtml(f.summary)}</span></span>
       <span class="num">${num}</span>
+    </div>`;
+}
+
+/* The message and how it got there. Rejected drafts are shown, not hidden:
+   watching the guard throw one out is the point of the page. */
+function message(m) {
+  const tries = m.attempts;
+  let how;
+  if (m.source === "template") how = "Fixed wording, no model used.";
+  else if (m.source === "model")
+    how = tries.length === 1
+      ? `Written by <b>${escapeHtml(m.writer)}</b>. Passed the guard first time.`
+      : `Written by <b>${escapeHtml(m.writer)}</b>. The guard refused the first draft; the retry passed.`;
+  else if (tries.some(a => a.error))
+    how = `<b>${escapeHtml(m.writer)}</b> could not be reached, so the fixed wording was sent.`;
+  else
+    how = `The guard refused every draft from <b>${escapeHtml(m.writer)}</b>, so the fixed wording was sent.`;
+
+  const refused = tries.filter(a => !a.passed).map((a, i) => `
+    <details class="refused">
+      <summary>Refused draft ${i + 1}${a.error ? " (error)" : ""}</summary>
+      ${a.error ? `<p class="why">${escapeHtml(a.error)}</p>` : `
+        <p class="draft">${escapeHtml(a.text)}</p>
+        <ul class="why">${a.problems.map(p => `<li>${escapeHtml(p)}</li>`).join("")}</ul>`}
+    </details>`).join("");
+
+  const secs = tries.length
+    ? ` &middot; ${(tries.reduce((t, a) => t + a.elapsed_ms, 0) / 1000).toFixed(1)} s` : "";
+
+  return `<div class="message">
+      <h4>Message to the customer</h4>
+      <p class="how">${how}${secs}</p>
+      <p class="text">${escapeHtml(m.text)}</p>
+      ${refused}
     </div>`;
 }
 
@@ -319,6 +356,31 @@ function escapeHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 }
 
+/* ---------------- message writers ---------------- */
+
+/* A writer that cannot run right now (no key, Ollama not started) is shown
+   but disabled, so nobody picks it and silently gets the fallback. */
+async function loadWriters() {
+  try {
+    const w = await (await fetch("/api/writers")).json();
+    for (const opt of $$("#writer option")) {
+      const info = w[opt.value];
+      if (!info) continue;
+      opt.textContent = info.label + (info.ok ? "" : " (not set up)");
+      opt.disabled = !info.ok;
+    }
+  } catch { /* the template still works */ }
+  try {
+    const saved = localStorage.getItem("writer");
+    const opt = saved && $(`#writer option[value="${saved}"]`);
+    if (opt && !opt.disabled) $("#writer").value = saved;
+  } catch { /* storage blocked */ }
+}
+$("#writer").addEventListener("change", () => {
+  try { localStorage.setItem("writer", $("#writer").value); } catch {}
+});
+
 /* ---------------- start ---------------- */
 show(location.hash.slice(1) || "check", false);
 refreshTally();
+loadWriters();

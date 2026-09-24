@@ -209,3 +209,14 @@ main{margin-left:248px;padding:26px 30px 60px;max-width:1240px}
   main{margin-left:0;padding:18px 16px 48px}
   .stats{grid-template-columns:1fr 1fr}
 }
+
+/* ---- customer message ---- */
+.message{margin-top:16px;border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.message h4{margin:0 0 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--label)}
+.message .how{margin:0 0 10px;font-size:12px;color:var(--cap)}
+.message .how b{color:var(--ink-2);font-weight:500}
+.message .text{margin:0;white-space:pre-wrap;color:var(--ink);font-size:13.5px}
+.refused{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;font-size:12.5px}
+.refused summary{cursor:pointer;color:var(--fix);font-weight:600}
+.refused .draft{white-space:pre-wrap;color:var(--ink-2);background:var(--grey-bg);padding:8px 10px;border-radius:4px;margin:8px 0 6px}
+.refused .why{margin:0;padding-left:18px;color:var(--fix)}

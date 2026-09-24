@@ -1,8 +1,9 @@
 """The state machine that drives a job from upload to routed decision.
 
-Stages 05 (AUTO_FIX) and 06 (EXPLAIN) are not built yet, so a run currently
-goes RECEIVED -> NORMALIZED -> ANALYZED -> CHECKED -> terminal. The hooks are
-marked; nothing else has to move when they land.
+A run goes RECEIVED -> NORMALIZED -> ANALYZED -> CHECKED -> terminal. When a
+message is asked for and the file is going back to the customer, stage 06 sits
+in between: CHECKED -> DRAFTED -> NEEDS_CUSTOMER_FIX. Stage 05 (AUTO_FIX) is
+not built yet.
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from .checks import run_checks
 from .config import Config, load_config
 from .decide import decide
 from .eventlog import EventLog, NullLog, new_run_id
+from .explain import Draft, Writer, explain
 from .normalize import normalize
 from .types import Finding, ProductSpec, State, UndecodableFile, Verdict
 
@@ -28,6 +30,7 @@ class Result:
     reason: str
     elapsed_ms: float
     dpi: float | None = None
+    message: Draft | None = None
 
     @property
     def approved(self) -> bool:
@@ -40,8 +43,14 @@ def run(
     config: Config | None = None,
     log: EventLog | None = None,
     run_id: str | None = None,
+    draft: bool = False,
+    writer: Writer | None = None,
 ) -> Result:
-    """Run one artwork file through the pipeline."""
+    """Run one artwork file through the pipeline.
+
+    With `draft`, a file going back to the customer also gets a message,
+    worded by `writer` or, when that is None, by the fixed template.
+    """
     config = config or load_config()
     log = log if log is not None else NullLog()
     run_id = run_id or new_run_id()
@@ -117,9 +126,26 @@ def run(
     # --- 04 DECIDE ------------------------------------------------------
     verdict: Verdict = decide(findings, config)
 
-    # --- 05 AUTO_FIX / 06 EXPLAIN --------------------------------------
-    # Not built yet. When they land they sit here, between CHECKED and the
-    # terminal state, and neither is allowed to change `verdict.route`.
+    # --- 05 AUTO_FIX ----------------------------------------------------
+    # Not built yet. It will sit here and, like 06, may not change the route.
+
+    # --- 06 EXPLAIN -----------------------------------------------------
+    # Runs after the route is fixed and only receives the findings, so no
+    # message, good or bad, can change where the job goes.
+    message = None
+    if draft and verdict.route is State.NEEDS_CUSTOMER_FIX:
+        message = explain(verdict.findings, product, writer)
+    if message is not None:
+        log.transition(
+            run_id,
+            state,
+            State.DRAFTED,
+            actor=message.writer,
+            source=message.source,
+            attempts=[a.to_dict() for a in message.attempts],
+            elapsed_ms=message.elapsed_ms,
+        )
+        state = State.DRAFTED
 
     log.transition(
         run_id,
@@ -137,4 +163,5 @@ def run(
         reason=verdict.reason,
         elapsed_ms=elapsed_ms(),
         dpi=round(features.dpi, 1),
+        message=message,
     )
